@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireOperatorContext, UnauthorizedError } from "@/lib/tenant-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,17 +12,9 @@ import {
 import { DiscoveryJobForm } from "./discovery-job-form";
 
 // Operator/admin view for triggering and monitoring Prospect discovery
-// runs (Requirements 1.5, 1.6 / Task 3.5).
+// runs (Requirements 1.5, 1.6 / Task 3.5). Operator gate + page chrome
+// now come from the shared /admin layout (Task 10.1).
 export default async function DiscoveryAdminPage() {
-  try {
-    await requireOperatorContext();
-  } catch (err) {
-    if (err instanceof UnauthorizedError) {
-      redirect("/login");
-    }
-    throw err;
-  }
-
   const jobs = await prisma.discoveryJob.findMany({
     orderBy: { createdAt: "desc" },
     take: 50,
@@ -32,7 +22,7 @@ export default async function DiscoveryAdminPage() {
   });
 
   return (
-    <div className="space-y-6 px-6 py-8">
+    <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Prospect Discovery</h1>
 
       <Card>
