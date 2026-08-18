@@ -9,6 +9,7 @@ import {
   type EmailInboundJobPayload,
 } from "@/lib/queues";
 import { runDiscoveryJob } from "@/lib/discovery/run-discovery-job";
+import { runSiteGenerationJob } from "@/lib/generation/run-site-generation-job";
 
 /**
  * Standalone background worker process (Requirement: task 1 scaffolding).
@@ -17,7 +18,7 @@ import { runDiscoveryJob } from "@/lib/discovery/run-discovery-job";
  * design.md Section 12 — e.g. Railway/Fly.io) and consumes the BullMQ
  * queues that the Next.js app enqueues jobs into.
  *   - discovery            -> Task 3 (Prospect Discovery Engine) — implemented
- *   - site-generation       -> Task 4 (AI Website Generation) — placeholder
+ *   - site-generation       -> Task 4 (AI Website Generation) — implemented
  *   - outreach              -> Task 6 (Email Outreach state machine) — placeholder
  *   - email-inbound         -> Task 6 (AI email auto-reply agent) — placeholder
  *
@@ -50,12 +51,16 @@ const discoveryWorker = new Worker<DiscoveryJobPayload>(
 const siteGenerationWorker = new Worker<SiteGenerationJobPayload>(
   QUEUE_NAMES.siteGeneration,
   async (job: Job<SiteGenerationJobPayload>) => {
-    log(QUEUE_NAMES.siteGeneration, "received job (not yet implemented)", {
+    log(QUEUE_NAMES.siteGeneration, "running site generation job", {
       jobId: job.id,
       data: job.data,
     });
-    // TODO(Task 4): call OpenAI for structured site copy, persist
-    // sites/site_pages, enqueue outreach kickoff.
+    const result = await runSiteGenerationJob(job);
+    log(QUEUE_NAMES.siteGeneration, "site generation job completed", {
+      jobId: job.id,
+      siteId: result.siteId,
+    });
+    // TODO(Task 6): enqueue outreach kickoff for newly-generated Prospect sites.
   },
   { connection: redisConnection },
 );
