@@ -53,24 +53,72 @@ export async function runEmailInboundJob(payload: EmailInboundJobPayload): Promi
     return;
   }
 
-  const priorMessages = thread.messages
-    .filter((m) => m.id !== incoming.id)
-    .map((m) => ({ direction: m.direction, body: m.body }));
+  // Task 11.1/11.2: on any failure past this point (most likely the
+  // OpenAI call itself), flag the thread for human review and audit-log
+  // the failure — mirroring the pattern used by the other job runners
+  // (discovery, site-generation) — rather than letting a failed inbound
+  // reply job silently exhaust its BullMQ retries with no visible trace
+  // for an operator to notice. A Prospect who replied and got no
+  // response at all is a worse outcome than one who got a slightly
+  // delayed human reply.
+  try {
+    const priorMessages = thread.messages
+      .filter((m) => m.id !== incoming.id)
+      .map((m) => ({ direction: m.direction, body: m.body }));
 
-  const agentResponse = await runEmailAgent({
-    businessName: thread.prospect.businessName,
-    previewUrl: siteUrl(thread.prospect.site.subdomain),
-    claimUrl: `${appUrl()}/claim/${thread.prospectId}`,
-    priorMessages,
-    incomingMessage: incoming.body,
-  });
+    const agentResponse = await runEmailAgent({
+      businessName: thread.prospect.businessName,
+      previewUrl: siteUrl(thread.prospect.site.subdomain),
+      claimUrl: `${appUrl()}/claim/${thread.prospectId}`,
+      priorMessages,
+      incomingMessage: incoming.body,
+    });
 
-  await prisma.emailMessage.update({
-    where: { id: incoming.id },
-    data: { confidenceScore: agentResponse.confidence },
-  });
+    await prisma.emailMessage.update({
+      where: { id: incoming.id },
+      data: { confidenceScore: agentResponse.confidence },
+    });
 
-  if (agentResponse.action === "escalate" || !agentResponse.replyBody) {
+    if (agentResponse.action === "escalate" || !agentResponse.replyBody) {
+      await prisma.emailThread.update({
+        where: { id: thread.id },
+        data: { status: "flagged_for_human" },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actor: "system:email-agent",
+          action: "email_escalated_to_human",
+          entityType: "EmailThread",
+          entityId: thread.id,
+          metadata: {
+            reason: agentResponse.escalationReason,
+            confidence: agentResponse.confidence,
+          },
+        },
+      });
+      return;
+    }
+
+    if (!thread.prospectId) return;
+
+    await sendEmail({
+      to: thread.prospect.email ?? "",
+      subject: `Re: ${thread.subject}`,
+      text: agentResponse.replyBody,
+      unsubscribeToken: createUnsubscribeToken(thread.prospectId),
+    });
+
+    await prisma.emailMessage.create({
+      data: {
+        threadId: thread.id,
+        direction: "outbound",
+        fromAddress: process.env.SENDGRID_FROM_EMAIL ?? "hello@localpilot.ai",
+        body: agentResponse.replyBody,
+        aiGenerated: true,
+        confidenceScore: agentResponse.confidence,
+      },
+    });
+  } catch (err) {
     await prisma.emailThread.update({
       where: { id: thread.id },
       data: { status: "flagged_for_human" },
@@ -78,35 +126,12 @@ export async function runEmailInboundJob(payload: EmailInboundJobPayload): Promi
     await prisma.auditLog.create({
       data: {
         actor: "system:email-agent",
-        action: "email_escalated_to_human",
+        action: "email_agent_failed",
         entityType: "EmailThread",
         entityId: thread.id,
-        metadata: {
-          reason: agentResponse.escalationReason,
-          confidence: agentResponse.confidence,
-        },
+        metadata: { error: err instanceof Error ? err.message : String(err) },
       },
     });
-    return;
+    throw err; // let BullMQ's retry/dead-letter policy still apply
   }
-
-  if (!thread.prospectId) return;
-
-  await sendEmail({
-    to: thread.prospect.email ?? "",
-    subject: `Re: ${thread.subject}`,
-    text: agentResponse.replyBody,
-    unsubscribeToken: createUnsubscribeToken(thread.prospectId),
-  });
-
-  await prisma.emailMessage.create({
-    data: {
-      threadId: thread.id,
-      direction: "outbound",
-      fromAddress: process.env.SENDGRID_FROM_EMAIL ?? "hello@localpilot.ai",
-      body: agentResponse.replyBody,
-      aiGenerated: true,
-      confidenceScore: agentResponse.confidence,
-    },
-  });
 }

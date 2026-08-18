@@ -41,9 +41,19 @@ export async function POST(request: Request) {
     if (!valid) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
+  } else if (process.env.NODE_ENV === "production") {
+    // Fail closed in production — see the matching comment in
+    // src/app/api/webhooks/email/events/route.ts (Task 11.4) for why this
+    // was changed from fail-open. Without this, an unauthenticated
+    // request could forge a Prospect reply and trigger the AI email
+    // agent's auto-reply path on fabricated content.
+    console.error(
+      "SendGrid Inbound Parse webhook rejected: SENDGRID_INBOUND_PARSE_WEBHOOK_PUBLIC_KEY is not configured in production.",
+    );
+    return NextResponse.json({ error: "Webhook verification not configured" }, { status: 500 });
   } else {
     console.warn(
-      "SendGrid Inbound Parse webhook received without SENDGRID_INBOUND_PARSE_WEBHOOK_PUBLIC_KEY configured — signature not verified.",
+      "SendGrid Inbound Parse webhook received without SENDGRID_INBOUND_PARSE_WEBHOOK_PUBLIC_KEY configured — signature not verified (allowed outside production).",
     );
   }
 
@@ -67,6 +77,26 @@ export async function POST(request: Request) {
     // 200 so SendGrid doesn't retry indefinitely on something that will
     // never succeed.
     return NextResponse.json({ ok: true, skipped: "missing from/body" });
+  }
+
+  // Idempotency (Task 11.2, extending the shared WebhookEvent pattern
+  // from Task 7.6/8.5 to this provider): SendGrid can retry Inbound Parse
+  // delivery on a timeout/5xx from this endpoint. Without dedup, a retry
+  // would create a second EmailMessage for the same inbound email and
+  // trigger the AI agent (Task 6.6) twice — a Prospect getting two
+  // separate auto-replies to one message. Keyed by the email's Message-ID
+  // header, which SendGrid includes in the raw `headers` field.
+  const messageId = extractMessageId(fields.headers);
+  if (messageId) {
+    const alreadyProcessed = await prisma.webhookEvent.findUnique({
+      where: { provider_eventId: { provider: "sendgrid-inbound", eventId: messageId } },
+    });
+    if (alreadyProcessed) {
+      return NextResponse.json({ ok: true, deduped: true });
+    }
+    await prisma.webhookEvent.create({
+      data: { provider: "sendgrid-inbound", eventId: messageId, type: "inbound_email" },
+    });
   }
 
   const prospect = await prisma.prospect.findFirst({ where: { email: fromEmail } });
@@ -111,6 +141,18 @@ function extractEmailAddress(fromHeader: string | undefined): string | null {
   // SendGrid's `from` field is a raw header value like `"Jane Doe" <jane@example.com>`.
   const match = fromHeader.match(/<([^>]+)>/);
   return (match ? match[1] : fromHeader).trim().toLowerCase();
+}
+
+/**
+ * Extracts the Message-ID header from SendGrid's raw `headers` field
+ * (the full original email headers as one string). Returns null if
+ * absent — dedup is skipped in that case rather than failing, since not
+ * every inbound email is guaranteed to carry one.
+ */
+function extractMessageId(headers: string | undefined): string | null {
+  if (!headers) return null;
+  const match = headers.match(/^Message-ID:\s*(.+)$/im);
+  return match ? match[1].trim() : null;
 }
 
 /**

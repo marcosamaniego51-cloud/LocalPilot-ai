@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyRetellSignature } from "@/lib/voice/verify-retell-signature";
+import { sendEmail } from "@/lib/email/sendgrid-client";
+import { createUnsubscribeToken } from "@/lib/outreach/unsubscribe-token";
 import type { CallOutcome } from "@/generated/prisma/enums";
 
 /**
@@ -93,6 +95,19 @@ export async function POST(request: Request) {
             outcome: mapDisconnectionToOutcome(body.call.disconnection_reason, body.call.transfer_destination),
           },
         });
+
+        // Requirement 7.3's "notify Tenant" (Task 11.1 closes this out —
+        // previously an audit-log-only stub for calls, same gap the
+        // contact-form notification had before Task 11.1 wired that one
+        // up too). Leads created via the take_message/request_appointment
+        // tools (Task 8.3) already trigger their own notification at
+        // creation time via notifyTenantOfNewLead() — this notifies on
+        // every completed call regardless, since a Tenant reasonably
+        // wants to know a call happened even for ones where the agent
+        // just answered an FAQ and didn't create a Lead.
+        if (tenant) {
+          await notifyTenantOfCompletedCall(tenant.id, body.call.call_id);
+        }
         break;
       }
 
@@ -129,6 +144,31 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ ok: true });
+}
+
+async function notifyTenantOfCompletedCall(tenantId: string, callId: string): Promise<void> {
+  const owner = await prisma.tenantUser.findFirst({
+    where: { tenantId, role: "owner" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!owner) return;
+
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant) return;
+
+  try {
+    await sendEmail({
+      to: owner.email,
+      subject: `Your AI receptionist just took a call`,
+      text: [
+        `Your AI receptionist for ${tenant.businessName} just finished a call.`,
+        `View the transcript in your dashboard: ${process.env.NEXT_PUBLIC_APP_URL ?? "https://localpilot.ai"}/dashboard/calls`,
+      ].join("\n"),
+      unsubscribeToken: createUnsubscribeToken(tenantId),
+    });
+  } catch (err) {
+    console.error(`Failed to send call-completed notification for Tenant ${tenantId}, call ${callId}`, err);
+  }
 }
 
 function mapDisconnectionToOutcome(

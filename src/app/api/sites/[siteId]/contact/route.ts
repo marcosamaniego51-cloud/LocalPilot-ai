@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { notifyTenantOfNewLead } from "@/lib/notifications/notify-tenant";
+import { checkRateLimit, getClientIdentifier } from "@/lib/security/rate-limit";
 
 // Public contact form submission (Requirement 3.5 / Task 5.4). Intentionally
-// unauthenticated (any visitor to a published site can submit it) but rate
-// limiting is still a TODO — see Task 11.3, which covers rate limiting for
-// all public endpoints including this one and the claim form.
+// unauthenticated (any visitor to a published site can submit it).
+// Rate-limited per Task 11.3 — same rationale as the claim endpoint,
+// public + unauthenticated + a real write (Lead creation) per request.
 
 const contactFormSchema = z.object({
   name: z.string().min(1).max(200),
@@ -20,6 +21,19 @@ export async function POST(
   { params }: { params: Promise<{ siteId: string }> },
 ) {
   const { siteId } = await params;
+
+  const rateLimit = await checkRateLimit({
+    route: "contact-form",
+    identifier: getClientIdentifier(request),
+    limit: 5,
+    windowSec: 60,
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again shortly." },
+      { status: 429 },
+    );
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = contactFormSchema.safeParse(body);

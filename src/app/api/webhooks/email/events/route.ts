@@ -44,13 +44,23 @@ export async function POST(request: Request) {
     if (!valid) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
+  } else if (process.env.NODE_ENV === "production") {
+    // Fail closed in production (Requirement 10.2, Task 11.4 — every
+    // webhook route must verify signatures before processing). Previously
+    // this failed open ("accept but log"), which was inconsistent with
+    // how the Stripe and Retell webhooks behave (both fail closed
+    // unconditionally) and left a real gap: without a configured key, an
+    // unauthenticated request could forge engagement events and
+    // manipulate a Prospect's outreach timing. Only non-production
+    // environments are allowed to proceed unverified, so local dev/testing
+    // doesn't require a real SendGrid account to exercise this route.
+    console.error(
+      "SendGrid event webhook rejected: SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY is not configured in production.",
+    );
+    return NextResponse.json({ error: "Webhook verification not configured" }, { status: 500 });
   } else {
-    // No verification key configured — accept but log loudly, since an
-    // unverified webhook is spoofable. Not failing closed here because a
-    // misconfigured/missing key shouldn't silently break event ingestion
-    // in early setup; this is meant to be visible in logs, not silent.
     console.warn(
-      "SendGrid event webhook received without SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY configured — signature not verified.",
+      "SendGrid event webhook received without SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY configured — signature not verified (allowed outside production).",
     );
   }
 
