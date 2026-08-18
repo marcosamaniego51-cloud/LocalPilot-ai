@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { createServer } from "node:http";
 import { Worker, type Job } from "bullmq";
 import { redisConnection } from "@/lib/redis";
 import {
@@ -158,7 +159,27 @@ for (const worker of [
 
 log("worker", `LocalPilot AI worker started, listening on queues: ${Object.values(QUEUE_NAMES).join(", ")}`);
 
+// Minimal HTTP health check server (Task 12.2) — Railway/Fly.io health
+// checks (and most container platforms generally) expect an HTTP
+// endpoint to poll, but this worker otherwise has no web server of its
+// own (it only consumes BullMQ jobs). A plain 200 here just means the
+// Node process is alive and the workers were constructed successfully;
+// it deliberately does not check Redis/DB connectivity itself, since
+// BullMQ's own retry/reconnection logic already handles transient
+// connection loss and a health check flapping the process on every
+// short Redis blip would cause more harm (unnecessary restarts) than it
+// prevents.
+const healthCheckPort = Number(process.env.WORKER_HEALTH_CHECK_PORT ?? 8080);
+const healthServer = createServer((_req, res) => {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ status: "ok" }));
+});
+healthServer.listen(healthCheckPort, () => {
+  log("worker", `Health check server listening on port ${healthCheckPort}`);
+});
+
 process.on("SIGTERM", async () => {
+  healthServer.close();
   await Promise.all([
     discoveryWorker.close(),
     siteGenerationWorker.close(),

@@ -14,9 +14,13 @@ architecture, and implementation plan this codebase follows.
 - **Database**: PostgreSQL via Prisma (driver adapter: `@prisma/adapter-pg`)
 - **Queue/cache**: Redis (BullMQ)
 - **Auth**: Auth.js (NextAuth v5, credentials provider, JWT sessions)
-- **Billing**: Stripe (not yet wired up — Task 7)
-- **Email**: SendGrid (not yet wired up — Task 6)
-- **Voice AI**: Twilio + Retell/Vapi, inbound-only (not yet wired up — Task 8)
+- **Billing**: Stripe (subscriptions, dunning, Customer Portal)
+- **Email**: SendGrid (outreach sequences, AI auto-reply, transactional notifications)
+- **Voice AI**: Retell AI (Twilio-backed numbers), inbound-only
+
+All 12 tasks in `.kiro/specs/local-pilot-ai/tasks.md` are implemented.
+See `DEPLOYMENT.md` for production deployment (Vercel + a separate
+worker host) and a pre-launch smoke-test checklist.
 
 ## Local Development
 
@@ -64,7 +68,15 @@ Seeded login for the dashboard: `owner@hilltopauto.example` / `password123`.
 (`{slug}.localpilot.ai`) to `/sites/[subdomain]`, which renders that
 Tenant/Prospect's generated site. The apex domain and reserved subdomains
 (`www`, `app`, `dashboard`, `admin`, `api`) fall through to the normal
-app routes. Custom domain resolution is a stub pending Task 5.5.
+app routes. Custom domains resolve via `/sites/custom-domain-lookup`,
+backed by the `custom_domains` table (see `src/lib/domains/`).
+
+## Deployment
+
+See `DEPLOYMENT.md` for the full guide: deploying the app to Vercel
+(with wildcard subdomain DNS), the worker to Railway/Fly.io via the
+included `Dockerfile`, the complete production secrets checklist, and a
+pre-launch end-to-end smoke test.
 
 ## Useful scripts
 
@@ -72,8 +84,16 @@ app routes. Custom domain resolution is a stub pending Task 5.5.
 |---|---|
 | `npm run dev` | Start the Next.js app |
 | `npm run worker` | Start the background worker (watch mode) |
+| `npm run worker:start` | Start the background worker once, no watch (production) |
+| `npm run worker:typecheck` | Type-check the worker + its `src/lib` imports |
 | `npm run db:migrate` | Apply Prisma migrations |
 | `npm run db:studio` | Open Prisma Studio (DB browser) |
 | `npm run db:seed` | Seed sample data |
 | `npm run lint` | ESLint |
-| `npm run build` | Production build |
+| `npm run build` | Production build (runs `prisma generate` automatically via `postinstall`) |
+
+The worker runs via `tsx` in both dev and production (see `Dockerfile`
+for why — a `tsc`-compiled build doesn't resolve the `@/*` path alias at
+runtime) and exposes a minimal health-check HTTP server on
+`WORKER_HEALTH_CHECK_PORT` (default `8080`) for container platform
+health probes.
