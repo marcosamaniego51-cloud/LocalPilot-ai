@@ -69,3 +69,18 @@ export async function requireOperatorContext(): Promise<{ userId: string }> {
 
   return { userId: user.id };
 }
+
+/**
+ * Role-based access within a Tenant account (Requirement 9.4 / Task 9.8).
+ * Layered on top of requireTenantContext() — use this for owner-only
+ * actions/pages (e.g. billing) rather than checking `role` inline at each
+ * call site, so the "which pages are owner-only" policy stays centralized
+ * and greppable in one place.
+ */
+export async function requireTenantOwner(): Promise<TenantContext> {
+  const ctx = await requireTenantContext();
+  if (ctx.role !== "owner") {
+    throw new UnauthorizedError("Owner role required");
+  }
+  return ctx;
+}

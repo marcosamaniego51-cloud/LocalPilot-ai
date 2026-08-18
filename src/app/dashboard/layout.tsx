@@ -9,7 +9,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/calls", label: "Call Logs" },
   { href: "/dashboard/emails", label: "Emails" },
   { href: "/dashboard/site", label: "Site Editor" },
-  { href: "/dashboard/billing", label: "Billing" },
+  { href: "/dashboard/receptionist", label: "AI Receptionist" },
+  { href: "/dashboard/billing", label: "Billing", ownerOnly: true },
 ];
 
 export default async function DashboardLayout({
@@ -23,12 +24,21 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Role-based nav filtering (Requirement 9.4 / Task 9.8) — staff users
+  // don't see owner-only sections like Billing. This is a UX convenience,
+  // not the actual enforcement boundary: the owner-only pages/routes
+  // themselves check the role server-side too (see
+  // src/app/dashboard/billing/page.tsx), since hiding a nav link alone
+  // would not stop a staff user from navigating to the URL directly.
+  const role = (session.user as { role?: string }).role;
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.ownerOnly || role === "owner");
+
   return (
     <div className="flex flex-1">
       <aside className="hidden w-56 flex-col border-r px-4 py-6 sm:flex">
         <span className="mb-6 px-2 text-lg font-semibold">LocalPilot AI</span>
         <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}

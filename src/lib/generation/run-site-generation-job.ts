@@ -218,10 +218,27 @@ async function runSectionRegeneration(
 export async function runSiteGenerationJob(
   job: Job<SiteGenerationJobPayload>,
 ): Promise<{ siteId: string }> {
-  const { siteId, regenerateSection } = job.data;
+  const { siteId, regenerateSection, siteEditRequestId } = job.data;
 
   if (siteId && regenerateSection) {
-    return runSectionRegeneration(siteId, regenerateSection, job.attemptsMade);
+    try {
+      const result = await runSectionRegeneration(siteId, regenerateSection, job.attemptsMade);
+      if (siteEditRequestId) {
+        await prisma.siteEditRequest.update({
+          where: { id: siteEditRequestId },
+          data: { status: "applied" },
+        });
+      }
+      return result;
+    } catch (err) {
+      if (siteEditRequestId) {
+        await prisma.siteEditRequest.update({
+          where: { id: siteEditRequestId },
+          data: { status: "failed" },
+        });
+      }
+      throw err;
+    }
   }
 
   return runFullGeneration(job.data, job.attemptsMade);

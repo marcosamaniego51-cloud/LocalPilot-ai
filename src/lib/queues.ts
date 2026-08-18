@@ -30,6 +30,10 @@ export type SiteGenerationJobPayload = {
   // Section regeneration (Task 4.5) targets an existing Site.
   siteId?: string;
   regenerateSection?: "home" | "about" | "services" | "contact";
+  // Set when this regeneration was triggered by a Tenant's Site Editor
+  // request (Task 9.6), so the job runner can flip the request's status
+  // to applied/failed when done.
+  siteEditRequestId?: string;
 };
 
 // The outreach queue carries two distinct job types, distinguished by

@@ -5,12 +5,11 @@ import { requireTenantContext, UnauthorizedError } from "@/lib/tenant-context";
 import { updateReceptionistAgent } from "@/lib/voice/provision-receptionist";
 
 /**
- * Tenant-facing receptionist configuration (Requirement 7.5 / Task 8.1-8.4
- * supporting endpoint). A full Site Editor UI around this is Task 9.6 —
- * this route is the API surface it will call; built now so the
- * "Tenant edits business info -> agent updates" loop is complete
- * end-to-end rather than leaving updateReceptionistAgent() with no caller
- * outside the provisioning path.
+ * Tenant-facing receptionist configuration (Requirement 7.5 / Task 8.1-8.4,
+ * and the dashboard UI at src/app/dashboard/receptionist which calls this
+ * — Task 9.6). Built ahead of that UI so the "Tenant edits config ->
+ * agent updates" loop was complete end-to-end rather than leaving
+ * updateReceptionistAgent() with no caller outside the provisioning path.
  */
 
 const updateSchema = z.object({
