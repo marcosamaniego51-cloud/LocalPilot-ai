@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
+import { normalizeBusinessName } from "@/lib/discovery/dedup";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -16,6 +17,7 @@ async function main() {
     create: {
       id: "seed-prospect-1",
       businessName: "Riverside Plumbing Co.",
+      normalizedBusinessName: normalizeBusinessName("Riverside Plumbing Co."),
       category: "plumber",
       phone: "+15555550101",
       normalizedPhone: "+15555550101",
@@ -33,6 +35,7 @@ async function main() {
     create: {
       id: "seed-prospect-2",
       businessName: "Sunrise Nail Salon",
+      normalizedBusinessName: normalizeBusinessName("Sunrise Nail Salon"),
       category: "salon",
       phone: "+15555550102",
       normalizedPhone: "+15555550102",
@@ -89,6 +92,7 @@ async function main() {
     create: {
       id: "seed-tenant-1",
       businessName: "Hilltop Auto Repair",
+      normalizedBusinessName: normalizeBusinessName("Hilltop Auto Repair"),
       createdAt: new Date(),
     },
   });
@@ -145,9 +149,21 @@ async function main() {
     skipDuplicates: true,
   });
 
+  // A platform operator account for the admin/discovery views.
+  const operatorPasswordHash = await bcrypt.hash("operator123", 10);
+  await prisma.operatorUser.upsert({
+    where: { email: "operator@localpilot.example" },
+    update: {},
+    create: {
+      email: "operator@localpilot.example",
+      passwordHash: operatorPasswordHash,
+    },
+  });
+
   console.log("Seed complete:");
   console.log(`  Prospects: ${prospect1.businessName}, ${prospect2.businessName}`);
   console.log(`  Tenant: ${tenant.businessName} (login: owner@hilltopauto.example / password123)`);
+  console.log(`  Operator login: operator@localpilot.example / operator123`);
 }
 
 main()

@@ -22,7 +22,13 @@ export type DiscoveryJobPayload = {
 };
 
 export type SiteGenerationJobPayload = {
-  siteId: string;
+  // Full generation (Task 4) is keyed by prospectId/tenantId (whichever
+  // owns the site) since the Site row itself doesn't exist yet the first
+  // time this job runs — Task 4's generation worker creates it.
+  prospectId?: string;
+  tenantId?: string;
+  // Section regeneration (Task 4.5) targets an existing Site.
+  siteId?: string;
   regenerateSection?: "home" | "about" | "services" | "contact";
 };
 

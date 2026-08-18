@@ -8,18 +8,18 @@ import {
   type OutreachTickJobPayload,
   type EmailInboundJobPayload,
 } from "@/lib/queues";
+import { runDiscoveryJob } from "@/lib/discovery/run-discovery-job";
 
 /**
  * Standalone background worker process (Requirement: task 1 scaffolding).
  *
  * This runs independently of the Next.js app (deployed separately per
  * design.md Section 12 — e.g. Railway/Fly.io) and consumes the BullMQ
- * queues that the Next.js app enqueues jobs into. Each handler below is a
- * placeholder to be implemented in its corresponding task:
- *   - discovery            -> Task 3 (Prospect Discovery Engine)
- *   - site-generation       -> Task 4 (AI Website Generation)
- *   - outreach              -> Task 6 (Email Outreach state machine)
- *   - email-inbound         -> Task 6 (AI email auto-reply agent)
+ * queues that the Next.js app enqueues jobs into.
+ *   - discovery            -> Task 3 (Prospect Discovery Engine) — implemented
+ *   - site-generation       -> Task 4 (AI Website Generation) — placeholder
+ *   - outreach              -> Task 6 (Email Outreach state machine) — placeholder
+ *   - email-inbound         -> Task 6 (AI email auto-reply agent) — placeholder
  *
  * Run locally with: npm run worker
  */
@@ -33,12 +33,16 @@ function log(queue: string, message: string, extra?: Record<string, unknown>) {
 const discoveryWorker = new Worker<DiscoveryJobPayload>(
   QUEUE_NAMES.discovery,
   async (job: Job<DiscoveryJobPayload>) => {
-    log(QUEUE_NAMES.discovery, "received job (not yet implemented)", {
+    log(QUEUE_NAMES.discovery, "running discovery job", {
       jobId: job.id,
-      data: job.data,
+      discoveryJobId: job.data.discoveryJobId,
     });
-    // TODO(Task 3): query Google Places, filter no-website businesses,
-    // dedup, create Prospect rows, enqueue site-generation per new Prospect.
+    const stats = await runDiscoveryJob(job.data.discoveryJobId);
+    log(QUEUE_NAMES.discovery, "discovery job completed", {
+      jobId: job.id,
+      discoveryJobId: job.data.discoveryJobId,
+      stats,
+    });
   },
   { connection: redisConnection },
 );

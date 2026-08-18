@@ -123,25 +123,26 @@ model DiscoveryJob {
 }
 
 model Prospect {
-  id              String         @id @default(cuid())
-  businessName    String
-  category        String
-  phone           String?
-  normalizedPhone String?
-  email           String?
-  address         String?
-  city            String?
-  state           String?
-  lat             Float?
-  lng             Float?
-  source          String         @default("google_places")
-  status          ProspectStatus @default(new)
-  doNotContact    Boolean        @default(false)
-  doNotCall       Boolean        @default(false)
-  discoveryJobId  String?
-  discoveryJob    DiscoveryJob?  @relation(fields: [discoveryJobId], references: [id])
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                     String         @id @default(cuid())
+  businessName           String
+  normalizedBusinessName String
+  category               String
+  phone                  String?
+  normalizedPhone        String?
+  email                  String?
+  address                String?
+  city                   String?
+  state                  String?
+  lat                    Float?
+  lng                    Float?
+  source                 String         @default("google_places")
+  status                 ProspectStatus @default(new)
+  doNotContact           Boolean        @default(false)
+  doNotCall              Boolean        @default(false)
+  discoveryJobId         String?
+  discoveryJob           DiscoveryJob?  @relation(fields: [discoveryJobId], references: [id])
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
   site          Site?
   tenant        Tenant?
@@ -150,6 +151,7 @@ model Prospect {
   calls         Call[]
 
   @@index([normalizedPhone])
+  @@index([normalizedBusinessName])
   @@index([status])
   @@map("prospects")
 }
@@ -240,6 +242,7 @@ model Tenant {
   prospectId              String?   @unique
   prospect                Prospect? @relation(fields: [prospectId], references: [id])
   businessName            String
+  normalizedBusinessName  String
   receptionistPhoneNumber String?
   forwardingNumber        String?
   stripeCustomerId        String?   @unique
@@ -253,6 +256,7 @@ model Tenant {
   calls        Call[]
   emailThreads EmailThread[]
 
+  @@index([normalizedBusinessName])
   @@map("tenants")
 }
 
@@ -266,6 +270,21 @@ model TenantUser {
   createdAt    DateTime       @default(now())
 
   @@map("tenant_users")
+}
+
+// Platform operator/staff accounts — distinct from TenantUser (Requirement
+// 9.3). Operators are not scoped to any single Tenant; they access the
+// admin/discovery/support views. Kept as a separate table/model rather
+// than a role value on TenantUser so an operator can never accidentally
+// be resolved as "the tenant user for tenant X" by code that only checks
+// tenantId presence.
+model OperatorUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@map("operator_users")
 }
 
 model Subscription {

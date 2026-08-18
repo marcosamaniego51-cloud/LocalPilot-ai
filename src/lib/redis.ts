@@ -11,6 +11,12 @@ function createConnection(): Redis {
   const url = process.env.REDIS_URL ?? "redis://localhost:6379";
   return new IORedis(url, {
     maxRetriesPerRequest: null,
+    // Defer the actual TCP connection until the first command is issued
+    // (e.g. a queue.add() call), rather than connecting the moment this
+    // module is imported. Avoids noisy ECONNREFUSED retries during `next
+    // build`'s static analysis/route collection, when nothing has actually
+    // tried to enqueue a job yet and Redis may not be up.
+    lazyConnect: true,
   });
 }
 
