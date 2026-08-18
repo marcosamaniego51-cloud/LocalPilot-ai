@@ -13,6 +13,7 @@ import { sendEmail } from "@/lib/email/sendgrid-client";
 import { runEmailAgent } from "@/lib/outreach/email-agent";
 import { createUnsubscribeToken } from "@/lib/outreach/unsubscribe-token";
 import { stopOutreachSequence } from "@/lib/outreach/run-outreach-tick";
+import { siteUrl } from "@/lib/sites/site-url";
 import type { EmailInboundJobPayload } from "@/lib/queues";
 
 function appUrl(): string {
@@ -56,11 +57,9 @@ export async function runEmailInboundJob(payload: EmailInboundJobPayload): Promi
     .filter((m) => m.id !== incoming.id)
     .map((m) => ({ direction: m.direction, body: m.body }));
 
-  const appDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN ?? "localpilot.ai").split(":")[0];
-
   const agentResponse = await runEmailAgent({
     businessName: thread.prospect.businessName,
-    previewUrl: `https://${thread.prospect.site.subdomain}.${appDomain}`,
+    previewUrl: siteUrl(thread.prospect.site.subdomain),
     claimUrl: `${appUrl()}/claim/${thread.prospectId}`,
     priorMessages,
     incomingMessage: incoming.body,

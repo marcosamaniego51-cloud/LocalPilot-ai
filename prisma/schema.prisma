@@ -276,7 +276,27 @@ model TenantUser {
   role         TenantUserRole @default(owner)
   createdAt    DateTime       @default(now())
 
+  passwordResetTokens PasswordResetToken[]
+
   @@map("tenant_users")
+}
+
+// One-time password-set/reset tokens (Task 7.3). Used for the initial
+// "set your password" link sent when a Tenant is first provisioned at
+// claim time, and can be reused later for a standard forgot-password
+// flow. Stores a hash of the token, never the raw token, so a DB leak
+// alone can't be used to take over an account before the link is used or
+// expires.
+model PasswordResetToken {
+  id           String     @id @default(cuid())
+  tenantUserId String
+  tenantUser   TenantUser @relation(fields: [tenantUserId], references: [id], onDelete: Cascade)
+  tokenHash    String     @unique
+  expiresAt    DateTime
+  usedAt       DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@map("password_reset_tokens")
 }
 
 // Platform operator/staff accounts — distinct from TenantUser (Requirement
@@ -376,6 +396,26 @@ model EmailMessage {
   createdAt       DateTime       @default(now())
 
   @@map("email_messages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Webhook idempotency
+// ─────────────────────────────────────────────────────────────
+
+// Generic dedup record for inbound provider webhooks (Requirement 10.3 /
+// Task 7.6). Providers (Stripe, Twilio, SendGrid, Retell/Vapi) all retry
+// webhook delivery on timeout/5xx, so every webhook handler must be safe
+// to receive the same event twice. Keyed by (provider, eventId) rather
+// than a bare id, since event-id namespaces are provider-specific and we
+// don't want to assume global uniqueness across providers.
+model WebhookEvent {
+  provider  String
+  eventId   String
+  type      String
+  createdAt DateTime @default(now())
+
+  @@id([provider, eventId])
+  @@map("webhook_events")
 }
 
 // ─────────────────────────────────────────────────────────────

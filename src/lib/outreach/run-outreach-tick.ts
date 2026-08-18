@@ -31,6 +31,7 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/sendgrid-client";
 import { buildOutreachEmail } from "@/lib/outreach/email-templates";
 import { createUnsubscribeToken } from "@/lib/outreach/unsubscribe-token";
+import { siteUrl } from "@/lib/sites/site-url";
 
 const STEP_INTERVALS_DAYS = [0, 2, 5] as const; // index = step about to be sent
 const FINAL_STEP = STEP_INTERVALS_DAYS.length - 1;
@@ -80,7 +81,7 @@ async function sendSequenceStep(params: {
   siteSubdomain: string;
   step: 0 | 1 | 2;
 }): Promise<void> {
-  const previewUrl = `https://${params.siteSubdomain}.${(process.env.NEXT_PUBLIC_APP_DOMAIN ?? "localpilot.ai").split(":")[0]}`;
+  const previewUrl = siteUrl(params.siteSubdomain);
   const claimUrl = `${appUrl()}/claim/${params.prospectId}`;
 
   const template = buildOutreachEmail(params.step, {

@@ -21,6 +21,7 @@ async function main() {
       category: "plumber",
       phone: "+15555550101",
       normalizedPhone: "+15555550101",
+      email: "owner@riversideplumbing.example",
       address: "123 River Rd",
       city: "Austin",
       state: "TX",
