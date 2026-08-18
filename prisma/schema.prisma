@@ -67,6 +67,12 @@ enum CallOutcome {
   no_answer
   resolved
   transferred
+  // Added for Task 8 (inbound receptionist) — outcomes an inbound call
+  // to a Tenant's business can resolve to, distinct from the outreach-call
+  // outcomes above (which don't apply here since outbound calling is
+  // descoped per design.md Section 11).
+  message_taken
+  appointment_requested
 }
 
 enum EmailDirection {
@@ -252,16 +258,23 @@ model Tenant {
   normalizedBusinessName  String
   receptionistPhoneNumber String?
   forwardingNumber        String?
+  // Retell resource ids for the Tenant's AI receptionist (Task 8). Kept
+  // alongside receptionistPhoneNumber rather than in a separate table —
+  // there's exactly one receptionist agent per Tenant in v1, so a 1:1
+  // set of nullable columns is simpler than a join for no benefit.
+  retellLlmId             String?
+  retellAgentId           String?
   stripeCustomerId        String?   @unique
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  site         Site?
-  users        TenantUser[]
-  subscription Subscription?
-  leads        Lead[]
-  calls        Call[]
-  emailThreads EmailThread[]
+  site               Site?
+  users              TenantUser[]
+  subscription       Subscription?
+  leads              Lead[]
+  calls              Call[]
+  emailThreads       EmailThread[]
+  receptionistConfig ReceptionistConfig?
 
   @@index([normalizedBusinessName])
   @@map("tenants")
@@ -358,7 +371,7 @@ model Call {
   prospect       Prospect?     @relation(fields: [prospectId], references: [id])
   leadId         String?
   lead           Lead?         @relation(fields: [leadId], references: [id])
-  providerCallId String?
+  providerCallId String?       @unique
   transcript     String?
   outcome        CallOutcome?
   durationSec    Int?
@@ -396,6 +409,34 @@ model EmailMessage {
   createdAt       DateTime       @default(now())
 
   @@map("email_messages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Voice AI receptionist (Task 8) — inbound-only, see design.md Section 11
+// for why outbound AI calling was descoped.
+// ─────────────────────────────────────────────────────────────
+
+// Persists a Tenant's inbound-call configuration (Requirement 7.5):
+// business hours, FAQs, and the personal number to fall back to when the
+// AI receptionist can't handle a request (Requirement 7.4). Kept as its
+// own model rather than folded into Site.businessInfo (which already
+// holds a loosely-typed hours/services/faq blob for the *website*) so the
+// receptionist's config has a stable, directly-queryable shape
+// independent of whatever the site content generation puts in that JSON
+// blob — the two are allowed to say the same thing without being forced
+// to be the exact same object.
+model ReceptionistConfig {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  businessHours  Json? // { mon: "9am-5pm", ... } — free-form, Tenant-authored
+  faqs           Json? // [{ question, answer }]
+  personalNumber String? // fallback transfer target (Requirement 7.4)
+  greeting       String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@map("receptionist_configs")
 }
 
 // ─────────────────────────────────────────────────────────────

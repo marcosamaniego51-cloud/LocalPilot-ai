@@ -125,7 +125,27 @@ async function main() {
       id: "seed-tenant-1",
       businessName: "Hilltop Auto Repair",
       normalizedBusinessName: normalizeBusinessName("Hilltop Auto Repair"),
+      // Fake Retell resource ids — this Tenant is seeded as if its AI
+      // receptionist has already been provisioned (Task 8), so the
+      // dashboard's call-log view has something to show without needing
+      // a real Retell account in local dev.
+      retellLlmId: "llm_seed_dev_placeholder",
+      retellAgentId: "agent_seed_dev_placeholder",
+      receptionistPhoneNumber: "+15555550199",
       createdAt: new Date(),
+    },
+  });
+
+  await prisma.receptionistConfig.upsert({
+    where: { tenantId: tenant.id },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      businessHours: { mon: "8am-6pm", tue: "8am-6pm", wed: "8am-6pm", thu: "8am-6pm", fri: "8am-5pm" },
+      faqs: [
+        { question: "Do you do same-day oil changes?", answer: "Yes, usually within an hour if we're not booked up." },
+      ],
+      greeting: "Thanks for calling Hilltop Auto Repair, how can I help you today?",
     },
   });
 
@@ -177,8 +197,31 @@ async function main() {
         phone: "+15555550110",
         message: "Need an oil change quote for a 2018 Civic.",
       },
+      {
+        tenantId: tenant.id,
+        source: "inbound_call",
+        name: "Chris Nguyen",
+        phone: "+15555550120",
+        message: "Appointment request — Wants: brake inspection, Preferred time: this Saturday morning",
+      },
     ],
     skipDuplicates: true,
+  });
+
+  // A sample completed inbound call, so the (Task 8/9) call log view has
+  // something to render in local dev.
+  await prisma.call.upsert({
+    where: { providerCallId: "call_seed_dev_placeholder" },
+    update: {},
+    create: {
+      direction: "inbound",
+      tenantId: tenant.id,
+      providerCallId: "call_seed_dev_placeholder",
+      transcript:
+        "Agent: Thanks for calling Hilltop Auto Repair, how can I help you today?\nUser: Hi, I'd like to book a brake inspection for this Saturday morning.\nAgent: Great, I've passed along your appointment request.",
+      outcome: "appointment_requested",
+      durationSec: 42,
+    },
   });
 
   // A platform operator account for the admin/discovery views.

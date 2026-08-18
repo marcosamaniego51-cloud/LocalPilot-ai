@@ -18,6 +18,7 @@ import { stopOutreachSequence } from "@/lib/outreach/run-outreach-tick";
 import { normalizeBusinessName } from "@/lib/discovery/dedup";
 import { sendEmail } from "@/lib/email/sendgrid-client";
 import { createUnsubscribeToken } from "@/lib/outreach/unsubscribe-token";
+import { provisionReceptionistForTenant } from "@/lib/voice/provision-receptionist";
 
 function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "https://localpilot.ai";
@@ -179,6 +180,25 @@ export async function completeClaimFromCheckout(params: {
     rawResetToken,
     prospectId: prospect.id,
   });
+
+  // Deliberately not awaited-and-thrown on failure — see the doc comment
+  // on provisionReceptionistForTenant() for why a Retell failure here
+  // shouldn't fail the whole webhook handler (which would trigger a
+  // wasted Stripe retry against an already-completed claim).
+  try {
+    await provisionReceptionistForTenant(tenant.id);
+  } catch (err) {
+    console.error(`Failed to provision receptionist for Tenant ${tenant.id}`, err);
+    await prisma.auditLog.create({
+      data: {
+        actor: "system:billing",
+        action: "receptionist_provisioning_failed",
+        entityType: "Tenant",
+        entityId: tenant.id,
+        metadata: { error: err instanceof Error ? err.message : String(err) },
+      },
+    });
+  }
 
   return { tenantId: tenant.id };
 }

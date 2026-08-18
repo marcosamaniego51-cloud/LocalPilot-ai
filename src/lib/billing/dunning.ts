@@ -10,6 +10,37 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/sendgrid-client";
 import { createUnsubscribeToken } from "@/lib/outreach/unsubscribe-token";
+import { disableInboundAgent, enableInboundAgent } from "@/lib/voice/retell-client";
+
+/**
+ * Requirement 7.6: ties receptionist availability directly to
+ * subscription status. Best-effort — a Retell API failure here shouldn't
+ * block the billing state transition itself (the subscription/site
+ * status update above is the source of truth; this just keeps Retell's
+ * side in sync with it and is safe to retry/reconcile separately if it
+ * fails).
+ */
+async function disableReceptionistIfProvisioned(tenantId: string): Promise<void> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant?.receptionistPhoneNumber) return;
+
+  try {
+    await disableInboundAgent(tenant.receptionistPhoneNumber);
+  } catch (err) {
+    console.error(`Failed to disable receptionist for Tenant ${tenantId}`, err);
+  }
+}
+
+async function enableReceptionistIfProvisioned(tenantId: string): Promise<void> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  if (!tenant?.receptionistPhoneNumber || !tenant.retellAgentId) return;
+
+  try {
+    await enableInboundAgent(tenant.receptionistPhoneNumber, tenant.retellAgentId);
+  } catch (err) {
+    console.error(`Failed to re-enable receptionist for Tenant ${tenantId}`, err);
+  }
+}
 
 async function notifyTenantBillingEvent(tenantId: string, subject: string, text: string): Promise<void> {
   const owner = await prisma.tenantUser.findFirst({
@@ -76,12 +107,9 @@ export async function handleSubscriptionSuspended(tenantId: string): Promise<voi
       where: { tenantId },
       data: { status: "suspended" },
     });
-    // Receptionist disablement itself (Req 7.6) is implemented in Task 8
-    // against the Tenant's receptionistPhoneNumber — nothing to flip here
-    // until that column is populated by Task 8's provisioning step. The
-    // suspended subscription.status is the single source of truth Task 8
-    // reads from, so no separate flag is needed on Tenant/Site for this.
   });
+
+  await disableReceptionistIfProvisioned(tenantId);
 
   await notifyTenantBillingEvent(
     tenantId,
@@ -115,6 +143,8 @@ export async function handleSubscriptionCanceled(tenantId: string): Promise<void
       data: { status: "suspended" },
     });
   });
+
+  await disableReceptionistIfProvisioned(tenantId);
 
   await prisma.auditLog.create({
     data: {
@@ -151,6 +181,8 @@ export async function handlePaymentSucceededAfterPastDue(
   });
 
   if (wasImpacted) {
+    await enableReceptionistIfProvisioned(tenantId);
+
     await notifyTenantBillingEvent(
       tenantId,
       "Your LocalPilot AI site is back online",
