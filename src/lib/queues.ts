@@ -58,22 +58,77 @@ const defaultJobOptions = {
   removeOnFail: false, // keep failures around for dead-letter inspection (Req 10.3)
 };
 
-export const discoveryQueue = new Queue<DiscoveryJobPayload>(
-  QUEUE_NAMES.discovery,
-  { connection: redisConnection, defaultJobOptions },
-);
+// ─────────────────────────────────────────────────────────────
+// Lean-launch mode: queues are constructed lazily and add() calls
+// gracefully no-op if Redis is unreachable. This means the Next.js app
+// (API routes, webhook handlers) can function without Redis/the worker
+// running — the only things that break are background job processing
+// itself (site generation, outreach sequencing, email-agent replies),
+// which is fine when running the $0 stack where you're doing manual
+// discovery + manual outreach anyway.
+//
+// The worker process itself still fails hard on Redis (it must be able
+// to connect to consume jobs), so this graceful degradation only applies
+// to the app side's enqueue calls.
+// ─────────────────────────────────────────────────────────────
 
-export const siteGenerationQueue = new Queue<SiteGenerationJobPayload>(
-  QUEUE_NAMES.siteGeneration,
-  { connection: redisConnection, defaultJobOptions },
-);
+function createQueue<T>(name: string): Queue<T> {
+  return new Queue<T>(name, { connection: redisConnection, defaultJobOptions });
+}
 
-export const outreachQueue = new Queue<OutreachTickJobPayload>(
-  QUEUE_NAMES.outreach,
-  { connection: redisConnection, defaultJobOptions },
-);
+// Lazy queue instances — only created on first use, not at import time.
+let _discoveryQueue: Queue<DiscoveryJobPayload> | undefined;
+let _siteGenerationQueue: Queue<SiteGenerationJobPayload> | undefined;
+let _outreachQueue: Queue<OutreachTickJobPayload> | undefined;
+let _emailInboundQueue: Queue<EmailInboundJobPayload> | undefined;
 
-export const emailInboundQueue = new Queue<EmailInboundJobPayload>(
-  QUEUE_NAMES.emailInbound,
-  { connection: redisConnection, defaultJobOptions },
-);
+export const discoveryQueue = new Proxy({} as Queue<DiscoveryJobPayload>, {
+  get(_target, prop) {
+    if (!_discoveryQueue) _discoveryQueue = createQueue(QUEUE_NAMES.discovery);
+    return Reflect.get(_discoveryQueue, prop);
+  },
+});
+
+export const siteGenerationQueue = new Proxy({} as Queue<SiteGenerationJobPayload>, {
+  get(_target, prop) {
+    if (!_siteGenerationQueue) _siteGenerationQueue = createQueue(QUEUE_NAMES.siteGeneration);
+    return Reflect.get(_siteGenerationQueue, prop);
+  },
+});
+
+export const outreachQueue = new Proxy({} as Queue<OutreachTickJobPayload>, {
+  get(_target, prop) {
+    if (!_outreachQueue) _outreachQueue = createQueue(QUEUE_NAMES.outreach);
+    return Reflect.get(_outreachQueue, prop);
+  },
+});
+
+export const emailInboundQueue = new Proxy({} as Queue<EmailInboundJobPayload>, {
+  get(_target, prop) {
+    if (!_emailInboundQueue) _emailInboundQueue = createQueue(QUEUE_NAMES.emailInbound);
+    return Reflect.get(_emailInboundQueue, prop);
+  },
+});
+
+/**
+ * Safe wrapper for queue.add() that catches Redis connection errors
+ * gracefully — logs a warning and returns null instead of crashing the
+ * request. Use this in API routes/webhook handlers instead of calling
+ * queue.add() directly when you want the request to succeed even if the
+ * background worker infrastructure isn't running.
+ */
+export async function safeEnqueue<T>(
+  queue: Queue<T>,
+  name: string,
+  data: T,
+): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (queue as any).add(name, data);
+  } catch (err) {
+    console.warn(
+      `[lean-launch] Failed to enqueue job "${name}" — Redis/worker may not be running. The request will still succeed.`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}

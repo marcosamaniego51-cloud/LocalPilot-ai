@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AddProspectForm } from "./add-prospect-form";
 
 /**
  * Admin Prospect pipeline view (Requirement 1.6, 4.4 / Task 10.2).
@@ -40,6 +41,15 @@ export default async function ProspectPipelinePage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Prospect Pipeline</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Add a prospect manually</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AddProspectForm />
+        </CardContent>
+      </Card>
 
       {flaggedThreads.length > 0 ? (
         <Card className="border-destructive/50">

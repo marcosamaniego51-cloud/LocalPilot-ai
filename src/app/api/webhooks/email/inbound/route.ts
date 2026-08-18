@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { EventWebhook, EventWebhookHeader } from "@sendgrid/eventwebhook";
 import { prisma } from "@/lib/prisma";
 import { parseMultipartFields } from "@/lib/email/parse-multipart";
-import { emailInboundQueue } from "@/lib/queues";
+import { emailInboundQueue, safeEnqueue } from "@/lib/queues";
 
 /**
  * SendGrid Inbound Parse webhook receiver (Requirement 4.3 / Task 6.5).
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
     data: { status: "replied" },
   });
 
-  await emailInboundQueue.add("process", {
+  await safeEnqueue(emailInboundQueue, "process", {
     threadId: thread.id,
     emailMessageId: message.id,
   });

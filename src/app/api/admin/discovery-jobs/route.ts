@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { discoveryQueue } from "@/lib/queues";
+import { discoveryQueue, safeEnqueue } from "@/lib/queues";
 import { requireOperatorContext, UnauthorizedError } from "@/lib/tenant-context";
 
 // Operator endpoint to trigger and list discovery job runs (Requirements
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     },
   });
 
-  await discoveryQueue.add("run", {
+  await safeEnqueue(discoveryQueue, "run", {
     discoveryJobId: job.id,
     category,
     location,

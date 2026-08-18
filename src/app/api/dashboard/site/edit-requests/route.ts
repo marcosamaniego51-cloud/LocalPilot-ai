@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant-context";
-import { siteGenerationQueue } from "@/lib/queues";
+import { siteGenerationQueue, safeEnqueue } from "@/lib/queues";
 
 /**
  * Site edit requests — the AI-regeneration half of the Site Editor
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     });
   }
 
-  await siteGenerationQueue.add("regenerate", {
+  await safeEnqueue(siteGenerationQueue, "regenerate", {
     siteId: site.id,
     regenerateSection: parsed.data.section,
     siteEditRequestId: editRequest.id,

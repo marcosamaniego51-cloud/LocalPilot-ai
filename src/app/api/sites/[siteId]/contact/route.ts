@@ -8,6 +8,7 @@ import { checkRateLimit, getClientIdentifier } from "@/lib/security/rate-limit";
 // unauthenticated (any visitor to a published site can submit it).
 // Rate-limited per Task 11.3 — same rationale as the claim endpoint,
 // public + unauthenticated + a real write (Lead creation) per request.
+// Pricing: $299/mo base plan, $399/mo with AI receptionist add-on.
 
 const contactFormSchema = z.object({
   name: z.string().min(1).max(200),

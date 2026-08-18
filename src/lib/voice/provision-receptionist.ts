@@ -63,6 +63,15 @@ async function getBusinessInfo(tenantId: string): Promise<ReceptionistBusinessIn
 }
 
 export async function provisionReceptionistForTenant(tenantId: string): Promise<void> {
+  // Lean-launch mode: if RETELL_API_KEY isn't configured, skip
+  // receptionist provisioning entirely — the Tenant still gets a fully
+  // working website + dashboard + lead notifications, just no AI phone
+  // answering. This is the expected state when running on the $0 stack
+  // (no Retell account), and is not an error condition.
+  if (!process.env.RETELL_API_KEY) {
+    return;
+  }
+
   const existing = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
   if (existing.retellAgentId && existing.receptionistPhoneNumber) {
     return; // already provisioned — idempotent
@@ -126,6 +135,8 @@ export async function provisionReceptionistForTenant(tenantId: string): Promise<
  * if the Tenant has no receptionist provisioned yet.
  */
 export async function updateReceptionistAgent(tenantId: string): Promise<void> {
+  if (!process.env.RETELL_API_KEY) return; // lean-launch: no Retell configured
+
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
   if (!tenant.retellLlmId) return;
 

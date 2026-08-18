@@ -75,11 +75,27 @@ function appendComplianceFooter(text: string, unsubscribeToken: string): { text:
  * automatically (Requirement 10.1). Used for both outreach sequence
  * emails and AI auto-reply emails (Task 6.6) — every outbound email in
  * this system goes through this one function.
+ *
+ * Lean-launch mode: if SENDGRID_API_KEY is not configured, logs the
+ * email to the console instead of throwing — so the app can function
+ * end-to-end without a real email provider. The email content is still
+ * fully constructed (subject, body, footer) and visible in server logs
+ * for debugging/verification purposes.
  */
 export async function sendEmail(params: SendEmailParams): Promise<void> {
-  ensureInitialized();
-
   const { text, html } = appendComplianceFooter(params.text, params.unsubscribeToken);
+
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log(
+      `[lean-launch] Email NOT sent (no SENDGRID_API_KEY). Would have sent:\n` +
+      `  To: ${params.to}\n` +
+      `  Subject: ${params.subject}\n` +
+      `  Body: ${text.slice(0, 200)}${text.length > 200 ? "..." : ""}`,
+    );
+    return;
+  }
+
+  ensureInitialized();
 
   await sgMail.send({
     to: params.to,

@@ -54,15 +54,24 @@ export default async function ClaimPage({
 
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>LocalPilot AI — Full Plan</CardTitle>
+          <CardTitle>LocalPilot AI — Website Plan</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-3xl font-bold">$299<span className="text-base font-normal text-muted-foreground">/month</span></p>
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li>&bull; Your website, hosted and published</li>
-            <li>&bull; AI receptionist for incoming calls</li>
             <li>&bull; Lead notifications from your site&apos;s contact form</li>
+            <li>&bull; Dashboard to manage leads and site content</li>
             <li>&bull; Cancel anytime</li>
           </ul>
+          <div className="rounded-md border border-dashed p-3">
+            <p className="text-sm font-medium">Want an AI receptionist?</p>
+            <p className="text-sm text-muted-foreground">
+              Upgrade to <span className="font-semibold">$399/month</span> and
+              get an AI agent that answers your business calls 24/7, takes
+              messages, and books appointments.
+            </p>
+          </div>
           <ClaimButton prospectId={prospect.id} />
         </CardContent>
       </Card>

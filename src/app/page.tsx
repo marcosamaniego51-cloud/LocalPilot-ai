@@ -32,36 +32,42 @@ export default function MarketingHome() {
           </p>
         </div>
 
-        <div className="grid w-full max-w-4xl gap-4 sm:grid-cols-3">
-          <Card>
+        <div className="grid w-full max-w-4xl gap-4 sm:grid-cols-2">
+          <Card className="border-2">
             <CardHeader>
-              <CardTitle>AI-Built Website</CardTitle>
+              <CardTitle>Website Plan</CardTitle>
               <CardDescription>
-                A multi-page site generated and hosted for your business,
-                ready in minutes.
+                <span className="text-3xl font-bold text-foreground">$299</span>
+                <span className="text-muted-foreground">/month</span>
               </CardDescription>
             </CardHeader>
-            <CardContent />
+            <CardContent>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>&bull; AI-built multi-page website</li>
+                <li>&bull; Hosted and maintained for you</li>
+                <li>&bull; Contact form with instant lead notifications</li>
+                <li>&bull; Dashboard to manage everything</li>
+                <li>&bull; Cancel anytime</li>
+              </ul>
+            </CardContent>
           </Card>
-          <Card>
+          <Card className="border-2 border-primary">
             <CardHeader>
-              <CardTitle>AI Receptionist</CardTitle>
+              <CardTitle>Website + AI Receptionist</CardTitle>
               <CardDescription>
-                Never miss a call — an AI agent answers, takes messages, and
-                books appointments.
+                <span className="text-3xl font-bold text-foreground">$399</span>
+                <span className="text-muted-foreground">/month</span>
               </CardDescription>
             </CardHeader>
-            <CardContent />
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>One Monthly Plan</CardTitle>
-              <CardDescription>
-                Everything included for a single subscription. Cancel
-                anytime.
-              </CardDescription>
-            </CardHeader>
-            <CardContent />
+            <CardContent>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li>&bull; Everything in Website Plan</li>
+                <li>&bull; AI answers your business calls 24/7</li>
+                <li>&bull; Takes messages &amp; books appointments</li>
+                <li>&bull; Call transcripts in your dashboard</li>
+                <li>&bull; Transfers to you when needed</li>
+              </ul>
+            </CardContent>
           </Card>
         </div>
       </main>
