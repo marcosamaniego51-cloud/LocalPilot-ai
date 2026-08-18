@@ -1,0 +1,369 @@
+// LocalPilot AI — Prisma schema
+// Mirrors the data model defined in .kiro/specs/local-pilot-ai/design.md (Section 4)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum ProspectStatus {
+  new
+  previewed
+  contacted
+  replied
+  claimed
+  dead
+}
+
+enum SiteStatus {
+  preview
+  published
+  suspended
+}
+
+enum PageType {
+  home
+  about
+  services
+  contact
+}
+
+enum TenantUserRole {
+  owner
+  staff
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  suspended
+  canceled
+}
+
+enum LeadSource {
+  contact_form
+  inbound_call
+}
+
+enum CallDirection {
+  inbound
+  outbound
+}
+
+enum CallOutcome {
+  interested
+  not_interested
+  callback
+  voicemail
+  no_answer
+  resolved
+  transferred
+}
+
+enum EmailDirection {
+  outbound
+  inbound
+}
+
+enum EmailThreadStatus {
+  open
+  flagged_for_human
+  closed
+}
+
+enum OutreachSequence {
+  initial_email_seq
+}
+
+enum OutreachStatus {
+  active
+  paused
+  completed
+  stopped
+  exhausted
+}
+
+enum DiscoveryJobStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum SiteEditRequestStatus {
+  pending
+  applied
+  failed
+}
+
+// ─────────────────────────────────────────────────────────────
+// Discovery & Prospects
+// ─────────────────────────────────────────────────────────────
+
+model DiscoveryJob {
+  id        String             @id @default(cuid())
+  params    Json // { category, location, radiusKm }
+  status    DiscoveryJobStatus @default(pending)
+  stats     Json? // { scanned, created, duplicates }
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  prospects Prospect[]
+
+  @@map("discovery_jobs")
+}
+
+model Prospect {
+  id              String         @id @default(cuid())
+  businessName    String
+  category        String
+  phone           String?
+  normalizedPhone String?
+  email           String?
+  address         String?
+  city            String?
+  state           String?
+  lat             Float?
+  lng             Float?
+  source          String         @default("google_places")
+  status          ProspectStatus @default(new)
+  doNotContact    Boolean        @default(false)
+  doNotCall       Boolean        @default(false)
+  discoveryJobId  String?
+  discoveryJob    DiscoveryJob?  @relation(fields: [discoveryJobId], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  site          Site?
+  tenant        Tenant?
+  outreachState OutreachState?
+  emailThreads  EmailThread[]
+  calls         Call[]
+
+  @@index([normalizedPhone])
+  @@index([status])
+  @@map("prospects")
+}
+
+model OutreachState {
+  id           String           @id @default(cuid())
+  prospectId   String           @unique
+  prospect     Prospect         @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  sequence     OutreachSequence @default(initial_email_seq)
+  currentStep  Int              @default(0)
+  nextActionAt DateTime?
+  status       OutreachStatus   @default(active)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@map("outreach_states")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sites
+// ─────────────────────────────────────────────────────────────
+
+model Site {
+  id           String     @id @default(cuid())
+  prospectId   String?    @unique
+  prospect     Prospect?  @relation(fields: [prospectId], references: [id])
+  tenantId     String?    @unique
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  slug         String     @unique
+  subdomain    String     @unique
+  customDomain String?    @unique
+  status       SiteStatus @default(preview)
+  templateId   String
+  colorScheme  Json?
+  businessInfo Json? // { hours, services, faq, phone, logoUrl, photos: [] }
+  generatedAt  DateTime?
+  publishedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  pages        SitePage[]
+  editRequests SiteEditRequest[]
+
+  @@map("sites")
+}
+
+model SitePage {
+  id        String   @id @default(cuid())
+  siteId    String
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  pageType  PageType
+  content   Json // block-based AI-generated content
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([siteId, pageType])
+  @@map("site_pages")
+}
+
+model SiteEditRequest {
+  id        String                @id @default(cuid())
+  siteId    String
+  site      Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  request   Json // description of requested change
+  status    SiteEditRequestStatus @default(pending)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  @@map("site_edit_requests")
+}
+
+model CustomDomain {
+  id        String   @id @default(cuid())
+  domain    String   @unique
+  siteId    String
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("custom_domains")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tenants & Billing
+// ─────────────────────────────────────────────────────────────
+
+model Tenant {
+  id                      String    @id @default(cuid())
+  prospectId              String?   @unique
+  prospect                Prospect? @relation(fields: [prospectId], references: [id])
+  businessName            String
+  receptionistPhoneNumber String?
+  forwardingNumber        String?
+  stripeCustomerId        String?   @unique
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  site         Site?
+  users        TenantUser[]
+  subscription Subscription?
+  leads        Lead[]
+  calls        Call[]
+  emailThreads EmailThread[]
+
+  @@map("tenants")
+}
+
+model TenantUser {
+  id           String         @id @default(cuid())
+  tenantId     String
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String         @unique
+  passwordHash String?
+  role         TenantUserRole @default(owner)
+  createdAt    DateTime       @default(now())
+
+  @@map("tenant_users")
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  tenantId             String             @unique
+  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String             @unique
+  planId               String
+  status               SubscriptionStatus @default(trialing)
+  currentPeriodEnd     DateTime?
+  dunningStage         Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Leads, Calls, Email
+// ─────────────────────────────────────────────────────────────
+
+model Lead {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source    LeadSource
+  name      String?
+  phone     String?
+  email     String?
+  message   String?
+  createdAt DateTime   @default(now())
+
+  calls Call[]
+
+  @@map("leads")
+}
+
+model Call {
+  id             String        @id @default(cuid())
+  direction      CallDirection
+  tenantId       String?
+  tenant         Tenant?       @relation(fields: [tenantId], references: [id])
+  prospectId     String?
+  prospect       Prospect?     @relation(fields: [prospectId], references: [id])
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id])
+  providerCallId String?
+  transcript     String?
+  outcome        CallOutcome?
+  durationSec    Int?
+  recordingUrl   String?
+  createdAt      DateTime      @default(now())
+
+  @@map("calls")
+}
+
+model EmailThread {
+  id         String            @id @default(cuid())
+  prospectId String?
+  prospect   Prospect?         @relation(fields: [prospectId], references: [id])
+  tenantId   String?
+  tenant     Tenant?           @relation(fields: [tenantId], references: [id])
+  subject    String
+  status     EmailThreadStatus @default(open)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  messages EmailMessage[]
+
+  @@map("email_threads")
+}
+
+model EmailMessage {
+  id              String         @id @default(cuid())
+  threadId        String
+  thread          EmailThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  direction       EmailDirection
+  fromAddress     String
+  body            String
+  aiGenerated     Boolean        @default(false)
+  confidenceScore Float?
+  createdAt       DateTime       @default(now())
+
+  @@map("email_messages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Audit
+// ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actor      String
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}

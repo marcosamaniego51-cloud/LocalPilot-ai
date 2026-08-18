@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LocalPilot AI
 
-## Getting Started
+AI-built websites, self-serve billing, and automated customer communication
+(email + inbound AI call answering) for small local businesses.
 
-First, run the development server:
+See the full spec in `.kiro/specs/local-pilot-ai/` at the repo root
+(`requirements.md`, `design.md`, `tasks.md`) for the product scope,
+architecture, and implementation plan this codebase follows.
+
+## Stack
+
+- **App**: Next.js 16 (App Router, TypeScript, Tailwind, shadcn/ui)
+- **Worker**: standalone Node process (`src/worker`) consuming BullMQ queues
+- **Database**: PostgreSQL via Prisma (driver adapter: `@prisma/adapter-pg`)
+- **Queue/cache**: Redis (BullMQ)
+- **Auth**: Auth.js (NextAuth v5, credentials provider, JWT sessions)
+- **Billing**: Stripe (not yet wired up — Task 7)
+- **Email**: SendGrid (not yet wired up — Task 6)
+- **Voice AI**: Twilio + Retell/Vapi, inbound-only (not yet wired up — Task 8)
+
+## Local Development
+
+### 1. Start Postgres + Redis
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+(If `docker compose` isn't available in your environment, run equivalent
+`docker run` commands for `postgres:16-alpine` and `redis:7-alpine` using the
+same credentials as `docker-compose.yml`.)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Configure environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env
+```
 
-## Learn More
+The defaults in `.env` already point at the local Postgres/Redis containers
+above. Fill in third-party API keys as you implement the tasks that need
+them (see `.env.example` for the full list and what each is for).
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Install dependencies & set up the database
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+npm run db:migrate   # creates tables from prisma/schema.prisma
+npm run db:seed      # loads sample Prospects/Tenants for local testing
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Run the app and worker
 
-## Deploy on Vercel
+```bash
+npm run dev      # Next.js app on http://localhost:3000
+npm run worker   # background worker (separate terminal)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Seeded login for the dashboard: `owner@hilltopauto.example` / `password123`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Multi-tenant routing
+
+`src/proxy.ts` (Next.js 16's renamed `middleware.ts`) resolves the request's
+`Host` header and rewrites platform-subdomain requests
+(`{slug}.localpilot.ai`) to `/sites/[subdomain]`, which renders that
+Tenant/Prospect's generated site. The apex domain and reserved subdomains
+(`www`, `app`, `dashboard`, `admin`, `api`) fall through to the normal
+app routes. Custom domain resolution is a stub pending Task 5.5.
+
+## Useful scripts
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start the Next.js app |
+| `npm run worker` | Start the background worker (watch mode) |
+| `npm run db:migrate` | Apply Prisma migrations |
+| `npm run db:studio` | Open Prisma Studio (DB browser) |
+| `npm run db:seed` | Seed sample data |
+| `npm run lint` | ESLint |
+| `npm run build` | Production build |

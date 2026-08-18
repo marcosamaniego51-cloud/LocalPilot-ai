@@ -1,0 +1,160 @@
+import "dotenv/config";
+import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
+
+async function main() {
+  console.log("Seeding local dev data...");
+
+  // A couple of freshly-discovered Prospects, still at "new" status.
+  const prospect1 = await prisma.prospect.upsert({
+    where: { id: "seed-prospect-1" },
+    update: {},
+    create: {
+      id: "seed-prospect-1",
+      businessName: "Riverside Plumbing Co.",
+      category: "plumber",
+      phone: "+15555550101",
+      normalizedPhone: "+15555550101",
+      address: "123 River Rd",
+      city: "Austin",
+      state: "TX",
+      status: "new",
+      source: "google_places",
+    },
+  });
+
+  const prospect2 = await prisma.prospect.upsert({
+    where: { id: "seed-prospect-2" },
+    update: {},
+    create: {
+      id: "seed-prospect-2",
+      businessName: "Sunrise Nail Salon",
+      category: "salon",
+      phone: "+15555550102",
+      normalizedPhone: "+15555550102",
+      address: "456 Main St",
+      city: "Austin",
+      state: "TX",
+      status: "previewed",
+      source: "google_places",
+    },
+  });
+
+  // A Prospect that already has a preview site generated + an active outreach sequence.
+  await prisma.site.upsert({
+    where: { id: "seed-site-1" },
+    update: {},
+    create: {
+      id: "seed-site-1",
+      prospectId: prospect2.id,
+      slug: "sunrise-nail-salon",
+      subdomain: "sunrise-nail-salon",
+      status: "preview",
+      templateId: "salon-default",
+      generatedAt: new Date(),
+      pages: {
+        create: [
+          {
+            pageType: "home",
+            content: {
+              headline: "Sunrise Nail Salon — Relax, Refresh, Renew",
+              body: "Seed placeholder copy for local dev.",
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.outreachState.upsert({
+    where: { prospectId: prospect2.id },
+    update: {},
+    create: {
+      prospectId: prospect2.id,
+      sequence: "initial_email_seq",
+      currentStep: 1,
+      status: "active",
+      nextActionAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2),
+    },
+  });
+
+  // A fully claimed Tenant with a published site + a staff login for local testing.
+  const tenant = await prisma.tenant.upsert({
+    where: { id: "seed-tenant-1" },
+    update: {},
+    create: {
+      id: "seed-tenant-1",
+      businessName: "Hilltop Auto Repair",
+      createdAt: new Date(),
+    },
+  });
+
+  await prisma.site.upsert({
+    where: { id: "seed-site-2" },
+    update: {},
+    create: {
+      id: "seed-site-2",
+      tenantId: tenant.id,
+      slug: "hilltop-auto-repair",
+      subdomain: "hilltop-auto-repair",
+      status: "published",
+      templateId: "auto-shop-default",
+      generatedAt: new Date(),
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.subscription.upsert({
+    where: { tenantId: tenant.id },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      stripeSubscriptionId: "sub_seed_dev_placeholder",
+      planId: "starter-monthly",
+      status: "active",
+      currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    },
+  });
+
+  const passwordHash = await bcrypt.hash("password123", 10);
+  await prisma.tenantUser.upsert({
+    where: { email: "owner@hilltopauto.example" },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      email: "owner@hilltopauto.example",
+      passwordHash,
+      role: "owner",
+    },
+  });
+
+  await prisma.lead.createMany({
+    data: [
+      {
+        tenantId: tenant.id,
+        source: "contact_form",
+        name: "Jamie Rivera",
+        phone: "+15555550110",
+        message: "Need an oil change quote for a 2018 Civic.",
+      },
+    ],
+    skipDuplicates: true,
+  });
+
+  console.log("Seed complete:");
+  console.log(`  Prospects: ${prospect1.businessName}, ${prospect2.businessName}`);
+  console.log(`  Tenant: ${tenant.businessName} (login: owner@hilltopauto.example / password123)`);
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
