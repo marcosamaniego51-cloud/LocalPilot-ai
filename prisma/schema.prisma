@@ -182,7 +182,6 @@ model Site {
   tenant       Tenant?    @relation(fields: [tenantId], references: [id])
   slug         String     @unique
   subdomain    String     @unique
-  customDomain String?    @unique
   status       SiteStatus @default(preview)
   templateId   String
   colorScheme  Json?
@@ -192,8 +191,9 @@ model Site {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  pages        SitePage[]
-  editRequests SiteEditRequest[]
+  pages         SitePage[]
+  editRequests  SiteEditRequest[]
+  customDomains CustomDomain[]
 
   @@map("sites")
 }
@@ -224,12 +224,19 @@ model SiteEditRequest {
 }
 
 model CustomDomain {
-  id        String   @id @default(cuid())
-  domain    String   @unique
-  siteId    String
-  verified  Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id                String    @id @default(cuid())
+  domain            String    @unique
+  siteId            String
+  site              Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  // Random token the Tenant must publish as a TXT record
+  // (_localpilot-verify.<domain>) to prove domain ownership before the
+  // domain is attached to Vercel and requests are accepted for it.
+  verificationToken String
+  verified          Boolean   @default(false)
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
 
+  @@index([siteId])
   @@map("custom_domains")
 }
 

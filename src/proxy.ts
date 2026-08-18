@@ -53,8 +53,11 @@ export function proxy(request: NextRequest) {
 
   // Anything else is treated as a candidate custom domain — rewrite to a
   // lookup route keyed by the raw host, which resolves it against
-  // custom_domains at request time (Task 5.5).
-  const rewritten = new URL(`/sites/_custom-domain${url.pathname}`, request.url);
+  // custom_domains at request time (Task 5.5). Note: this route lives at
+  // /sites/custom-domain-lookup, NOT /sites/_custom-domain — Next.js App
+  // Router excludes `_`-prefixed folders from routing entirely, which
+  // would make an underscore-prefixed route unreachable.
+  const rewritten = new URL(`/sites/custom-domain-lookup${url.pathname}`, request.url);
   rewritten.search = url.search;
   rewritten.searchParams.set("host", hostWithoutPort);
   return NextResponse.rewrite(rewritten);

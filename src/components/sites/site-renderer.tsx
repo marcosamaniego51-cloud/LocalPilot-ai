@@ -5,6 +5,7 @@ import type {
   ServicesPageContent,
   ContactPageContent,
 } from "@/lib/generation/schemas";
+import { ContactForm } from "@/components/sites/contact-form";
 
 type SiteWithPages = SiteModel & { pages: SitePageModel[] };
 
@@ -110,10 +111,17 @@ export function SiteRenderer({ site }: { site: SiteWithPages }) {
             <div className="mx-auto max-w-xl text-center">
               <h2 className="text-2xl font-semibold">{contact.headline}</h2>
               <p className="mt-4 text-muted-foreground">{contact.body}</p>
-              <p className="mt-6 text-sm text-muted-foreground">
-                A working contact form is coming soon (Task 5.4) — for now,
-                reach out via the details above.
-              </p>
+              <div className="mt-8">
+                {site.status === "published" ? (
+                  <ContactForm siteId={site.id} submitLabel={contact.formLabel} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    This business hasn&apos;t claimed their site yet, so
+                    messages can&apos;t be sent here. Claim this site above
+                    to enable a working contact form.
+                  </p>
+                )}
+              </div>
             </div>
           </section>
         ) : null}

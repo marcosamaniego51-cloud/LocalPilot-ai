@@ -7,6 +7,12 @@
 
 import { prisma } from "@/lib/prisma";
 
+// Subdomains that must never be assigned to a real Tenant/Prospect site,
+// because they're used as literal Next.js route segments under
+// /sites/[subdomain] or its sibling routes (Task 5.5's custom-domain
+// lookup route). Checked in addition to the DB uniqueness check below.
+const RESERVED_SITE_SLUGS = new Set(["custom-domain-lookup"]);
+
 export function slugify(businessName: string): string {
   return businessName
     .toLowerCase()
@@ -30,7 +36,10 @@ export async function generateUniqueSlug(businessName: string): Promise<string> 
   let candidate = base;
   let attempt = 1;
 
-  while (await prisma.site.findUnique({ where: { subdomain: candidate } })) {
+  while (
+    RESERVED_SITE_SLUGS.has(candidate) ||
+    (await prisma.site.findUnique({ where: { subdomain: candidate } }))
+  ) {
     attempt += 1;
     candidate = `${base}-${attempt}`;
   }
