@@ -10,6 +10,9 @@ import {
 } from "@/lib/queues";
 import { runDiscoveryJob } from "@/lib/discovery/run-discovery-job";
 import { runSiteGenerationJob } from "@/lib/generation/run-site-generation-job";
+import { runOutreachTick, kickoffOutreachForSite } from "@/lib/outreach/run-outreach-tick";
+import { runEmailInboundJob } from "@/lib/outreach/run-email-inbound-job";
+import { outreachQueue } from "@/lib/queues";
 
 /**
  * Standalone background worker process (Requirement: task 1 scaffolding).
@@ -60,7 +63,12 @@ const siteGenerationWorker = new Worker<SiteGenerationJobPayload>(
       jobId: job.id,
       siteId: result.siteId,
     });
-    // TODO(Task 6): enqueue outreach kickoff for newly-generated Prospect sites.
+
+    // A Prospect's outreach sequence only starts once their preview site
+    // exists; Tenant-owned regenerations (e.g. after claim) never kick
+    // off outreach — kickoffOutreachForSite() itself no-ops for those, so
+    // this is safe to call unconditionally.
+    await outreachQueue.add("kickoff", { kind: "kickoff", siteId: result.siteId });
   },
   { connection: redisConnection },
 );
@@ -68,12 +76,16 @@ const siteGenerationWorker = new Worker<SiteGenerationJobPayload>(
 const outreachWorker = new Worker<OutreachTickJobPayload>(
   QUEUE_NAMES.outreach,
   async (job: Job<OutreachTickJobPayload>) => {
-    log(QUEUE_NAMES.outreach, "received job (not yet implemented)", {
-      jobId: job.id,
-      data: job.data,
-    });
-    // TODO(Task 6): advance the outreach_states state machine, send the
-    // next email in the sequence via SendGrid.
+    if (job.data.kind === "kickoff") {
+      log(QUEUE_NAMES.outreach, "running outreach kickoff", { jobId: job.id, siteId: job.data.siteId });
+      await kickoffOutreachForSite(job.data.siteId);
+      return;
+    }
+
+    const result = await runOutreachTick();
+    if (result.processed > 0) {
+      log(QUEUE_NAMES.outreach, "outreach tick completed", { jobId: job.id, ...result });
+    }
   },
   { connection: redisConnection },
 );
@@ -81,15 +93,29 @@ const outreachWorker = new Worker<OutreachTickJobPayload>(
 const emailInboundWorker = new Worker<EmailInboundJobPayload>(
   QUEUE_NAMES.emailInbound,
   async (job: Job<EmailInboundJobPayload>) => {
-    log(QUEUE_NAMES.emailInbound, "received job (not yet implemented)", {
-      jobId: job.id,
-      data: job.data,
-    });
-    // TODO(Task 6): run the AI email agent (reply vs escalate) against the
-    // inbound message.
+    log(QUEUE_NAMES.emailInbound, "running email inbound job", { jobId: job.id, data: job.data });
+    await runEmailInboundJob(job.data);
   },
   { connection: redisConnection },
 );
+
+// Recurring tick that scans for due OutreachStates and advances them
+// (Task 6.2). Every 5 minutes per design.md Section 5.4. Using BullMQ's
+// job scheduler (rather than a plain setInterval in this process) so the
+// schedule survives worker restarts/redeploys and multiple worker
+// instances don't all fire the same tick redundantly.
+async function registerOutreachTickScheduler() {
+  await outreachQueue.upsertJobScheduler(
+    "outreach-tick",
+    { every: 5 * 60 * 1000 },
+    { name: "tick", data: { kind: "tick" } },
+  );
+}
+registerOutreachTickScheduler().catch((err) => {
+  log(QUEUE_NAMES.outreach, "failed to register outreach tick scheduler", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+});
 
 for (const worker of [
   discoveryWorker,

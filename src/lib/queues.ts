@@ -32,9 +32,15 @@ export type SiteGenerationJobPayload = {
   regenerateSection?: "home" | "about" | "services" | "contact";
 };
 
-export type OutreachTickJobPayload = {
-  prospectId: string;
-};
+// The outreach queue carries two distinct job types, distinguished by
+// `kind`:
+//   - "tick": scans ALL due OutreachStates and advances each one. Enqueued
+//     on a recurring schedule via a BullMQ job scheduler (see worker/index.ts).
+//   - "kickoff": starts a brand-new Prospect's sequence once its preview
+//     site is ready. Enqueued once per Prospect by the site-generation job.
+export type OutreachTickJobPayload =
+  | { kind: "tick" }
+  | { kind: "kickoff"; siteId: string };
 
 export type EmailInboundJobPayload = {
   threadId: string;
